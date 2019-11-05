@@ -1,5 +1,15 @@
 import React from 'react'
 
-const Home = () => <React.Fragment>{new Date().toUTCString()}</React.Fragment>
+import { Trans } from 'react-i18next'
+
+const Home = () => {
+  return (
+    <React.Fragment>
+      <h1>
+        <Trans i18nKey="welcome">Default!</Trans>
+      </h1>
+    </React.Fragment>
+  )
+}
 
 export default Home

@@ -7,12 +7,14 @@ const log = debug('app:server')
 import path from 'path'
 import fs from 'fs-extra'
 
+const PORT = process.env.PORT || 3000
+
 import React from 'react'
+import { I18nextProvider } from 'react-i18next'
 import { StaticRouter } from 'react-router-dom'
 import { renderToString } from 'react-dom/server'
 import { ChunkExtractor } from '@loadable/server'
 
-import http2 from 'http2'
 import express from 'express'
 
 import cors from 'cors'
@@ -20,6 +22,9 @@ import helmet from 'helmet'
 import compression from 'compression'
 
 import { minify } from 'html-minifier'
+
+import i18n from './i18n/server'
+import { handle } from 'i18next-express-middleware'
 
 const app = express()
 
@@ -30,6 +35,8 @@ app.use(
   })
 )
 app.use(compression())
+
+app.use(handle(i18n))
 
 if (process.env.NODE_ENV !== 'production') {
   /* eslint-disable global-require, import/no-extraneous-dependencies */
@@ -44,7 +51,7 @@ if (process.env.NODE_ENV !== 'production') {
   app.use(
     webpackDevMiddleware(compiler, {
       logLevel: 'silent',
-      publicPath: '/dist/web',
+      publicPath: '/',
       serverSideRender: true,
       writeToDisk: true
     })
@@ -60,15 +67,28 @@ if (process.env.NODE_ENV !== 'production') {
 const nodeStats = path.resolve(__dirname, '../dist/node/loadable-stats.json')
 const webStats = path.resolve(__dirname, '../dist/web/loadable-stats.json')
 
-const HTML = ({ lang, title, link, style, main, script }) => {
+console.log('nodeStats', nodeStats)
+console.log('webStats', webStats)
+
+const HTML = ({
+  lang,
+  title,
+  link,
+  style,
+  main,
+  script,
+  initialI18nStore,
+  initialLanguage
+}) => {
   return minify(
     `<!DOCTYPE html>
-    <html lang=${lang}>
+    <html lang="${lang}">
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#000000">
         <link rel="icon" href="/images/icons/icon-72x72.png" type="image/png">
+        <link rel="apple-touch-icon" href="/images/icons/icon-192x192.png" type="image/png">
         <link rel="manifest" href="/manifest.json">
         <title>${title}</title>
         <meta name="description" content="${title}">
@@ -79,6 +99,12 @@ const HTML = ({ lang, title, link, style, main, script }) => {
         <noscript>You need to enable JavaScript to run this app.</noscript>
         <div id="main">${main}</div>
         ${script}
+        <script>
+          window.initialI18nStore = JSON.parse('${JSON.stringify(
+            initialI18nStore
+          )}');
+          window.initialLanguage = '${initialLanguage}';
+        </script>
       </body>
     </html>`,
     {
@@ -92,23 +118,20 @@ const HTML = ({ lang, title, link, style, main, script }) => {
   )
 }
 
-app.get(
-  '/dist/web/*',
-  express.static(path.join(__dirname, '..'), {
-    maxAge: '7d'
-  })
-)
-
-app.get(
-  '/*',
+app.use(
   express.static(path.join(__dirname, '../dist/web'), {
     maxAge: '7d'
   })
 )
 
-app.get('*', async (req, res, next) => {
+app.use(async (err, req, res, next) => {
+  log(`application:error`, err)
+  res.redirect(`/oops`)
+})
+
+app.get('/*', async (req, res, next) => {
   try {
-    const context = {}
+    let context = {}
 
     const nodeExtractor = new ChunkExtractor({
       statsFile: nodeStats
@@ -121,9 +144,11 @@ app.get('*', async (req, res, next) => {
     })
 
     const jsx = webExtractor.collectChunks(
-      <StaticRouter location={req.url} context={context}>
-        <App />
-      </StaticRouter>
+      <I18nextProvider i18n={req.i18n}>
+        <StaticRouter location={req.url} context={context}>
+          <App />
+        </StaticRouter>
+      </I18nextProvider>
     )
 
     if (context.url) {
@@ -139,27 +164,28 @@ app.get('*', async (req, res, next) => {
 
     const script = webExtractor.getScriptTags()
 
+    const initialI18nStore = {}
+    req.i18n.languages.forEach(language => {
+      initialI18nStore[language] = req.i18n.services.resourceStore.data[language]
+    })
+    const initialLanguage = req.i18n.language
+
     const html = HTML({
-      lang: 'en',
+      lang: initialLanguage,
       title: 'App',
       link: link,
       style: style,
       main: main,
-      script: script
+      script: script,
+      initialI18nStore,
+      initialLanguage
     })
 
-    res.set('content-type', 'text/html; charset=utf-8')
+    res.set('cache-control', 'public, max-age=604800')
     res.send(html)
   } catch (err) {
     next(err)
   }
 })
 
-app.use(async (err, req, res, next) => {
-  log(`App:error`, err)
-  res.redirect(`/oops`)
-})
-
-app.listen(process.env.PORT || 3000, () =>
-  log(`App is running on port ${process.env.PORT || 3000}`)
-)
+app.listen(PORT, () => log(`application is running on port ${PORT}`))

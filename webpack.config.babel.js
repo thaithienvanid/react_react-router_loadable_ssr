@@ -1,7 +1,7 @@
 import path from 'path'
 import webpack from 'webpack'
 import nodeExternals from 'webpack-node-externals'
-import CleanWebpackPlugin from 'clean-webpack-plugin'
+import { CleanWebpackPlugin } from 'clean-webpack-plugin'
 import CopyWebpackPlugin from 'copy-webpack-plugin'
 import LoadableWebpackPlugin from '@loadable/webpack-plugin'
 import MiniCssExtractPlugin from 'mini-css-extract-plugin'
@@ -29,7 +29,6 @@ const getConfig = target => {
           splitChunks: {
             chunks: 'all'
           },
-          namedModules: true,
           moduleIds: 'hashed',
           chunkIds: 'named'
         }
@@ -39,7 +38,6 @@ const getConfig = target => {
           splitChunks: {
             chunks: 'all'
           },
-          namedModules: true,
           moduleIds: 'hashed',
           chunkIds: 'named'
         }
@@ -54,12 +52,12 @@ const getConfig = target => {
     devtool: 'source-map',
     entry: target === 'web' ? `./src/web/index.js` : `./src/web/app.js`,
     output: {
-      path: path.join(DIST_PATH, target),
+      path: path.resolve(DIST_PATH, target),
       filename: production ? '[name].[contenthash:4].js' : '[name].[hash:4].js',
       chunkFilename: production
         ? '[id].[contenthash:4].js'
         : '[id].[hash:4].js',
-      publicPath: `/dist/${target}/`,
+      publicPath: `/`,
       libraryTarget: target === 'node' ? 'commonjs2' : undefined
     },
     externals:
@@ -93,7 +91,6 @@ const getConfig = target => {
           }
         ]
       }),
-      new webpack.HashedModuleIdsPlugin(),
       ...HotModuleReplacementPlugin
     ],
     module: {
